@@ -33,9 +33,11 @@ const TakeQuiz: React.FC = () => {
         .from('quizzes')
         .select('*')
         .eq('id', id)
-        .single();
+        .maybeSingle();
 
       if (quizError) throw quizError;
+      if (!quizData) throw new Error('Quiz not found');
+      if (!quizData) throw new Error('Quiz not found');
 
       // Check if quiz is active and within valid time range
       if (!quizData.is_active) {
