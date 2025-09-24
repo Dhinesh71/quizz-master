@@ -19,6 +19,7 @@ const TakeQuiz: React.FC = () => {
   const [submitted, setSubmitted] = useState(false);
   const [score, setScore] = useState(0);
   const [showResults, setShowResults] = useState(false);
+  const [quizUnavailableReason, setQuizUnavailableReason] = useState<string | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -36,20 +37,25 @@ const TakeQuiz: React.FC = () => {
         .maybeSingle();
 
       if (quizError) throw quizError;
-      if (!quizData) throw new Error('Quiz not found');
-      if (!quizData) throw new Error('Quiz not found');
+      if (!quizData) {
+        setQuizUnavailableReason('Quiz not found');
+        return;
+      }
 
       // Check if quiz is active and within valid time range
       if (!quizData.is_active) {
-        throw new Error('Quiz is not active');
+        setQuizUnavailableReason('Quiz is not active');
+        return;
       }
 
       const now = new Date();
       if (quizData.valid_from && new Date(quizData.valid_from) > now) {
-        throw new Error('Quiz is not yet available');
+        setQuizUnavailableReason('Quiz is not yet available');
+        return;
       }
       if (quizData.valid_until && new Date(quizData.valid_until) < now) {
-        throw new Error('Quiz is no longer available');
+        setQuizUnavailableReason('Quiz is no longer available');
+        return;
       }
 
       // Fetch questions
@@ -66,9 +72,7 @@ const TakeQuiz: React.FC = () => {
       setAnswers(new Array(questionsData.length).fill(''));
     } catch (error) {
       console.error('Error fetching quiz:', error);
-      // Set quiz to null so the component shows "Quiz Not Available"
-      setQuiz(null);
-      setQuestions([]);
+      setQuizUnavailableReason('An error occurred while loading the quiz');
     } finally {
       setLoading(false);
     }
@@ -150,7 +154,7 @@ const TakeQuiz: React.FC = () => {
     );
   }
 
-  if (!quiz || questions.length === 0) {
+  if (quizUnavailableReason || !quiz || questions.length === 0) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center py-8">
         <div className="max-w-md mx-auto px-4 text-center">
@@ -161,7 +165,7 @@ const TakeQuiz: React.FC = () => {
               </div>
               <h1 className="text-2xl font-bold text-gray-900 mb-2">Quiz Not Available</h1>
               <p className="text-gray-600">
-                This quiz is either inactive, not yet available, or has expired.
+                {quizUnavailableReason || 'This quiz is either inactive, not yet available, or has expired.'}
               </p>
             </div>
             <Link
