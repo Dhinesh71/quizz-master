@@ -285,8 +285,8 @@ const QuizResults: React.FC = () => {
                           <div>
                             <div className="text-sm font-medium text-gray-900 break-words">{response.student_name}</div>
                             <div className="text-sm text-gray-500 break-words">{response.student_email}</div>
-                            <div className="text-xs text-gray-400 break-words">{response.student_phone}</div>
-                            <div className="text-xs text-gray-400 break-words">{response.student_register_number}</div>
+                            <div className="text-xs text-gray-400 break-words">Phone: {response.student_phone}</div>
+                            <div className="text-xs text-gray-400 break-words">Reg: {response.student_register_number}</div>
                           </div>
                         </td>
                         <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
@@ -307,7 +307,7 @@ const QuizResults: React.FC = () => {
                         </td>
                         <td className="px-3 sm:px-6 py-4 text-sm text-gray-500">
                           <div className="break-words">{new Date(response.submitted_at).toLocaleDateString()}</div>
-                          <div className="text-xs text-gray-400">{new Date(response.submitted_at).toLocaleTimeString()}</div>
+                          <div className="text-xs text-gray-400">{new Date(response.submitted_at).toLocaleTimeString('en-US', { hour12: true })}</div>
                         </td>
                         <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <button
