@@ -106,6 +106,10 @@ const Dashboard: React.FC = () => {
     setShareModalOpen(false);
   };
 
+  const calculateStats = () => {
+    return {};
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -361,110 +365,6 @@ const Dashboard: React.FC = () => {
                 </table>
               </div>
             </>
-          )}
-        </div>
-
-        {/* Share Modal */}
-        {selectedQuiz && (
-          <ShareQuizModal
-            quiz={selectedQuiz}
-            isOpen={shareModalOpen}
-            onClose={() => setShareModalOpen(false)}
-            onUpdate={handleQuizUpdate}
-          />
-        )}
-      </div>
-    </div>
-  );
-};
-
-export default Dashboard;
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Quiz
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Responses
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Created
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {quizzes.map((quiz) => (
-                    <tr key={quiz.id} className="hover:bg-gray-50">
-                      <td className="px-3 sm:px-6 py-4">
-                        <div>
-                          <div className="text-sm font-medium text-gray-900 break-words">{quiz.title}</div>
-                          {quiz.description && (
-                            <div className="text-sm text-gray-500 break-words max-w-xs sm:max-w-sm">
-                              {quiz.description}
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
-                        <button
-                          onClick={() => toggleQuizStatus(quiz)}
-                          className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full transition-colors ${
-                            quiz.is_active
-                              ? 'bg-green-100 text-green-800 hover:bg-green-200'
-                              : 'bg-red-100 text-red-800 hover:bg-red-200'
-                          }`}
-                        >
-                          {quiz.is_active ? 'Active' : 'Inactive'}
-                        </button>
-                      </td>
-                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {responseCounts[quiz.id] || 0}
-                      </td>
-                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {new Date(quiz.created_at).toLocaleDateString()}
-                      </td>
-                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <div className="flex items-center space-x-3">
-                          <button
-                            onClick={() => copyQuizLink(quiz.id)}
-                            className="text-blue-600 hover:text-blue-900 transition-colors"
-                            title="Share quiz"
-                          >
-                            <Share2 className="h-5 w-5" />
-                          </button>
-                          <Link
-                            to={`/edit/${quiz.id}`}
-                            className="text-indigo-600 hover:text-indigo-900 transition-colors"
-                            title="Edit quiz"
-                          >
-                            <Edit className="h-5 w-5" />
-                          </Link>
-                          <Link
-                            to={`/results/${quiz.id}`}
-                            className="text-emerald-600 hover:text-emerald-900 transition-colors"
-                            title="View results"
-                          >
-                            <BarChart3 className="h-5 w-5" />
-                          </Link>
-                          <button
-                            onClick={() => deleteQuiz(quiz.id)}
-                            className="text-red-600 hover:text-red-900 transition-colors"
-                            title="Delete quiz"
-                          >
-                            <Trash2 className="h-5 w-5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
           )}
         </div>
 
