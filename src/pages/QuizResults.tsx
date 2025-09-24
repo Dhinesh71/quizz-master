@@ -86,6 +86,7 @@ const QuizResults: React.FC = () => {
     const headers = [
       'Student Name',
       'Email',
+      'Phone',
       'Register Number',
       'Score',
       'Total Questions',
@@ -99,6 +100,7 @@ const QuizResults: React.FC = () => {
       return [
         response.student_name,
         response.student_email,
+        response.student_phone,
         response.student_register_number,
         response.score,
         response.total_questions,
@@ -283,6 +285,7 @@ const QuizResults: React.FC = () => {
                           <div>
                             <div className="text-sm font-medium text-gray-900 break-words">{response.student_name}</div>
                             <div className="text-sm text-gray-500 break-words">{response.student_email}</div>
+                            <div className="text-xs text-gray-400 break-words">{response.student_phone}</div>
                             <div className="text-xs text-gray-400 break-words">{response.student_register_number}</div>
                           </div>
                         </td>
