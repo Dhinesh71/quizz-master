@@ -248,15 +248,21 @@ const TakeQuiz: React.FC = () => {
             <p className="text-gray-600 mb-6 text-lg leading-relaxed">{quiz.description}</p>
           )}
           
-          <div className="flex items-center text-sm text-gray-500 space-x-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 text-sm text-gray-500">
             <div className="flex items-center">
               <Clock className="h-4 w-4 mr-1" />
               <span>{questions.length} questions</span>
             </div>
             {quiz.valid_until && (
-              <div className="flex items-center">
+              <div className="flex items-center flex-wrap">
                 <AlertCircle className="h-4 w-4 mr-1" />
-                <span>Available until {new Date(quiz.valid_until).toLocaleString()}</span>
+                <span className="break-words">
+                  Available until {new Date(quiz.valid_until).toLocaleDateString()} at {new Date(quiz.valid_until).toLocaleTimeString('en-US', { 
+                    hour: '2-digit', 
+                    minute: '2-digit',
+                    hour12: true 
+                  })}
+                </span>
               </div>
             )}
           </div>
