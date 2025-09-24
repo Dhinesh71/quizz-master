@@ -1,37 +1,73 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { useAuth } from '../contexts/AuthContext';
-import { Quiz, Question, Response } from '../types/database';
-import Navbar from '../components/Navbar';
+import { Quiz, Question } from '../types/database';
 import LoadingSpinner from '../components/LoadingSpinner';
-import { Download, Users, Trophy, BarChart3, ArrowLeft } from 'lucide-react';
+import { CheckCircle, Clock, AlertCircle, User, Mail, Phone, Hash } from 'lucide-react';
 
-const QuizResults: React.FC = () => {
+const TakeQuiz: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
-  const [responses, setResponses] = useState<Response[]>([]);
   const [loading, setLoading] = useState(true);
-  const { user } = useAuth();
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [score, setScore] = useState(0);
+  const [error, setError] = useState('');
+
+  // Student info
+  const [studentName, setStudentName] = useState('');
+  const [studentEmail, setStudentEmail] = useState('');
+  const [studentPhone, setStudentPhone] = useState('');
+  const [studentRegisterNumber, setStudentRegisterNumber] = useState('');
+
+  // Quiz answers
+  const [answers, setAnswers] = useState<string[]>([]);
 
   useEffect(() => {
-    if (id && user) {
-      fetchData();
+    if (id) {
+      fetchQuiz();
     }
-  }, [id, user]);
+  }, [id]);
 
-  const fetchData = async () => {
+  const fetchQuiz = async () => {
     try {
-      // Fetch quiz
+      // Fetch quiz (accessible to anonymous users if active and within time bounds)
       const { data: quizData, error: quizError } = await supabase
         .from('quizzes')
         .select('*')
         .eq('id', id)
-        .eq('created_by', user?.id)
         .single();
 
-      if (quizError) throw quizError;
+      if (quizError) {
+        if (quizError.code === 'PGRST116') {
+          setError('Quiz not found or not accessible at this time.');
+        } else {
+          setError('Failed to load quiz. Please try again.');
+        }
+        setLoading(false);
+        return;
+      }
+
+      // Check if quiz is accessible
+      if (!quizData.is_active) {
+        setError('This quiz is currently inactive.');
+        setLoading(false);
+        return;
+      }
+
+      const now = new Date();
+      if (quizData.valid_from && new Date(quizData.valid_from) > now) {
+        setError(`This quiz will be available from ${new Date(quizData.valid_from).toLocaleString()}.`);
+        setLoading(false);
+        return;
+      }
+
+      if (quizData.valid_until && new Date(quizData.valid_until) < now) {
+        setError(`This quiz was available until ${new Date(quizData.valid_until).toLocaleString()}.`);
+        setLoading(false);
+        return;
+      }
 
       // Fetch questions
       const { data: questionsData, error: questionsError } = await supabase
@@ -40,100 +76,153 @@ const QuizResults: React.FC = () => {
         .eq('quiz_id', id)
         .order('order_index');
 
-      if (questionsError) throw questionsError;
-
-      // Fetch responses
-      const { data: responsesData, error: responsesError } = await supabase
-        .from('responses')
-        .select('*')
-        .eq('quiz_id', id)
-        .order('submitted_at', { ascending: false });
-
-      if (responsesError) throw responsesError;
+      if (questionsError) {
+        setError('Failed to load quiz questions. Please try again.');
+        setLoading(false);
+        return;
+      }
 
       setQuiz(quizData);
       setQuestions(questionsData);
-      setResponses(responsesData || []);
+      setAnswers(new Array(questionsData.length).fill(''));
     } catch (error) {
-      console.error('Error fetching quiz results:', error);
+      console.error('Error fetching quiz:', error);
+      setError('An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const calculateStats = () => {
-    if (responses.length === 0) {
-      return { averageScore: 0, totalResponses: 0, averagePercentage: 0 };
-    }
-
-    const totalScore = responses.reduce((sum, response) => sum + response.score, 0);
-    const averageScore = totalScore / responses.length;
-    const averagePercentage = (averageScore / questions.length) * 100;
-
-    return {
-      averageScore: Math.round(averageScore * 10) / 10,
-      totalResponses: responses.length,
-      averagePercentage: Math.round(averagePercentage)
-    };
+  const handleAnswerChange = (questionIndex: number, answer: string) => {
+    const newAnswers = [...answers];
+    newAnswers[questionIndex] = answer;
+    setAnswers(newAnswers);
   };
 
-  const exportToCSV = () => {
-    if (responses.length === 0) {
-      alert('No responses to export');
-      return;
+  const validateForm = () => {
+    if (!studentName.trim()) {
+      alert('Please enter your name');
+      return false;
+    }
+    if (!studentEmail.trim()) {
+      alert('Please enter your email');
+      return false;
+    }
+    if (!studentPhone.trim()) {
+      alert('Please enter your phone number');
+      return false;
+    }
+    if (!studentRegisterNumber.trim()) {
+      alert('Please enter your register number');
+      return false;
     }
 
-    const headers = [
-      'Student Name',
-      'Email',
-      'Phone',
-      'Register Number',
-      'Score',
-      'Total Questions',
-      'Percentage',
-      'Submitted At',
-      ...questions.map((_, index) => `Question ${index + 1}`)
-    ];
+    // Check if all questions are answered
+    for (let i = 0; i < questions.length; i++) {
+      if (!answers[i]) {
+        alert(`Please answer question ${i + 1}`);
+        return false;
+      }
+    }
 
-    const rows = responses.map(response => {
-      const percentage = Math.round((response.score / response.total_questions) * 100);
-      return [
-        response.student_name,
-        response.student_email,
-        response.student_phone,
-        response.student_register_number,
-        response.score,
-        response.total_questions,
-        `${percentage}%`,
-        new Date(response.submitted_at).toLocaleString(),
-        ...response.answers
-      ];
-    });
-
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `${quiz?.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_results.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    return true;
   };
 
-  const stats = calculateStats();
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validateForm()) return;
+
+    setSubmitting(true);
+    try {
+      // Calculate score
+      let correctAnswers = 0;
+      questions.forEach((question, index) => {
+        if (answers[index] === question.correct_answer) {
+          correctAnswers++;
+        }
+      });
+
+      // Submit response
+      const { error } = await supabase
+        .from('responses')
+        .insert({
+          quiz_id: id!,
+          student_name: studentName.trim(),
+          student_email: studentEmail.trim(),
+          student_phone: studentPhone.trim(),
+          student_register_number: studentRegisterNumber.trim(),
+          answers,
+          score: correctAnswers,
+          total_questions: questions.length
+        });
+
+      if (error) throw error;
+
+      setScore(correctAnswers);
+      setSubmitted(true);
+    } catch (error) {
+      console.error('Error submitting quiz:', error);
+      alert('Failed to submit quiz. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <Navbar />
-        <div className="flex items-center justify-center py-12">
-          <LoadingSpinner size="large" />
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <LoadingSpinner size="large" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="max-w-md mx-auto text-center">
+          <div className="bg-red-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
+            <AlertCircle className="h-10 w-10 text-red-600" />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Quiz Not Available</h1>
+          <p className="text-gray-600">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (submitted) {
+    const percentage = Math.round((score / questions.length) * 100);
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="max-w-md mx-auto text-center">
+          <div className="bg-green-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
+            <CheckCircle className="h-10 w-10 text-green-600" />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Quiz Submitted!</h1>
+          <p className="text-gray-600 mb-4">Thank you for taking the quiz.</p>
+          
+          <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Your Results</h2>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Score:</span>
+                <span className="font-medium">{score}/{questions.length}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Percentage:</span>
+                <span className={`font-medium ${
+                  percentage >= 80 ? 'text-green-600' : 
+                  percentage >= 60 ? 'text-yellow-600' : 'text-red-600'
+                }`}>
+                  {percentage}%
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <p className="text-sm text-gray-500">
+            Your response has been recorded. You can close this page now.
+          </p>
         </div>
       </div>
     );
@@ -141,199 +230,156 @@ const QuizResults: React.FC = () => {
 
   if (!quiz) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <Navbar />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="text-center">
-            <h1 className="text-2xl font-bold text-gray-900">Quiz not found</h1>
-            <p className="text-gray-600 mt-2">The quiz you're looking for doesn't exist or you don't have permission to view its results.</p>
-          </div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900">Quiz not found</h1>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Navbar />
-      
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center gap-4 mb-4">
-            <Link
-              to="/dashboard"
-              className="text-gray-600 hover:text-gray-900 transition-colors"
-            >
-              <ArrowLeft className="h-6 w-6" />
-            </Link>
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">{quiz.title}</h1>
-              <p className="text-gray-600 mt-1">Quiz Results & Analytics</p>
-            </div>
-          </div>
+    <div className="min-h-screen bg-gray-50 py-8">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Quiz Header */}
+        <div className="bg-white rounded-lg shadow-md p-8 mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-4">{quiz.title}</h1>
+          {quiz.description && (
+            <p className="text-gray-600 mb-6 text-lg leading-relaxed">{quiz.description}</p>
+          )}
           
-          <div className="flex justify-between items-center">
-            <div className="text-sm text-gray-500">
-              Created on {new Date(quiz.created_at).toLocaleDateString()}
+          <div className="flex items-center text-sm text-gray-500 space-x-4">
+            <div className="flex items-center">
+              <Clock className="h-4 w-4 mr-1" />
+              <span>{questions.length} questions</span>
             </div>
-            {responses.length > 0 && (
-              <button
-                onClick={exportToCSV}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
-              >
-                <Download className="h-5 w-5" />
-                Export CSV
-              </button>
+            {quiz.valid_until && (
+              <div className="flex items-center">
+                <AlertCircle className="h-4 w-4 mr-1" />
+                <span>Available until {new Date(quiz.valid_until).toLocaleString()}</span>
+              </div>
             )}
           </div>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-8">
+        <form onSubmit={handleSubmit} className="space-y-8">
+          {/* Student Information */}
           <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="flex items-center">
-              <div className="bg-blue-100 p-3 rounded-lg">
-                <Users className="h-8 w-8 text-blue-600" />
+            <h2 className="text-xl font-semibold text-gray-900 mb-6">Student Information</h2>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <User className="h-4 w-4 inline mr-1" />
+                  Full Name *
+                </label>
+                <input
+                  type="text"
+                  value={studentName}
+                  onChange={(e) => setStudentName(e.target.value)}
+                  className="block w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  placeholder="Enter your full name"
+                  required
+                />
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Total Responses</p>
-                <p className="text-3xl font-bold text-gray-900">{stats.totalResponses}</p>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <Mail className="h-4 w-4 inline mr-1" />
+                  Email Address *
+                </label>
+                <input
+                  type="email"
+                  value={studentEmail}
+                  onChange={(e) => setStudentEmail(e.target.value)}
+                  className="block w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  placeholder="Enter your email"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <Phone className="h-4 w-4 inline mr-1" />
+                  Phone Number *
+                </label>
+                <input
+                  type="tel"
+                  value={studentPhone}
+                  onChange={(e) => setStudentPhone(e.target.value)}
+                  className="block w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  placeholder="Enter your phone number"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <Hash className="h-4 w-4 inline mr-1" />
+                  Register Number *
+                </label>
+                <input
+                  type="text"
+                  value={studentRegisterNumber}
+                  onChange={(e) => setStudentRegisterNumber(e.target.value)}
+                  className="block w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  placeholder="Enter your register number"
+                  required
+                />
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="flex items-center">
-              <div className="bg-emerald-100 p-3 rounded-lg">
-                <Trophy className="h-8 w-8 text-emerald-600" />
+          {/* Questions */}
+          <div className="space-y-6">
+            {questions.map((question, index) => (
+              <div key={question.id} className="bg-white rounded-lg shadow-md p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                  {index + 1}. {question.question_text}
+                </h3>
+                
+                <div className="space-y-3">
+                  {question.options.map((option, optionIndex) => (
+                    <label
+                      key={optionIndex}
+                      className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                    >
+                      <input
+                        type="radio"
+                        name={`question-${index}`}
+                        value={option}
+                        checked={answers[index] === option}
+                        onChange={() => handleAnswerChange(index, option)}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                        required
+                      />
+                      <span className="ml-3 text-gray-900">{option}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Average Score</p>
-                <p className="text-3xl font-bold text-gray-900">
-                  {stats.averageScore}/{questions.length}
-                </p>
-              </div>
-            </div>
+            ))}
           </div>
 
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="flex items-center">
-              <div className="bg-purple-100 p-3 rounded-lg">
-                <BarChart3 className="h-8 w-8 text-purple-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Average Percentage</p>
-                <p className="text-3xl font-bold text-gray-900">{stats.averagePercentage}%</p>
-              </div>
-            </div>
+          {/* Submit Button */}
+          <div className="text-center">
+            <button
+              type="submit"
+              disabled={submitting}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-8 py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 mx-auto"
+            >
+              {submitting ? (
+                <LoadingSpinner size="small" />
+              ) : (
+                <CheckCircle className="h-5 w-5" />
+              )}
+              {submitting ? 'Submitting...' : 'Submit Quiz'}
+            </button>
           </div>
-        </div>
-
-        {/* Responses Table */}
-        <div className="bg-white rounded-lg shadow-md overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">Student Responses</h2>
-          </div>
-
-          {responses.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="bg-gray-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Users className="h-10 w-10 text-gray-400" />
-              </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No responses yet</h3>
-              <p className="text-gray-600 mb-6">Share your quiz with students to start collecting responses!</p>
-              <button
-                onClick={() => {
-                  const link = `${window.location.origin}/quiz/${quiz.id}`;
-                  navigator.clipboard.writeText(link);
-                  alert('Quiz link copied to clipboard!');
-                }}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
-              >
-                Copy Quiz Link
-              </button>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Student
-                    </th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Score
-                    </th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Percentage
-                    </th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Submitted
-                    </th>
-                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {responses.map((response) => {
-                    const percentage = Math.round((response.score / response.total_questions) * 100);
-                    return (
-                      <tr key={response.id} className="hover:bg-gray-50">
-                        <td className="px-3 sm:px-6 py-4">
-                          <div>
-                            <div className="text-sm font-medium text-gray-900 break-words">{response.student_name}</div>
-                            <div className="text-sm text-gray-500 break-words">{response.student_email}</div>
-                            <div className="text-xs text-gray-400 break-words">Phone: {response.student_phone}</div>
-                            <div className="text-xs text-gray-400 break-words">Reg: {response.student_register_number}</div>
-                          </div>
-                        </td>
-                        <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900 font-medium">
-                            {response.score}/{response.total_questions}
-                          </div>
-                        </td>
-                        <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            percentage >= 80
-                              ? 'bg-green-100 text-green-800'
-                              : percentage >= 60
-                              ? 'bg-yellow-100 text-yellow-800'
-                              : 'bg-red-100 text-red-800'
-                          }`}>
-                            {percentage}%
-                          </span>
-                        </td>
-                        <td className="px-3 sm:px-6 py-4 text-sm text-gray-500">
-                          <div className="break-words">{new Date(response.submitted_at).toLocaleDateString()}</div>
-                          <div className="text-xs text-gray-400">{new Date(response.submitted_at).toLocaleTimeString('en-US', { hour12: true })}</div>
-                        </td>
-                        <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <button
-                            onClick={() => {
-                              const details = questions.map((question, index) => 
-                                `${index + 1}. ${question.question_text}\nStudent Answer: ${response.answers[index]}\nCorrect Answer: ${question.correct_answer}\n${response.answers[index] === question.correct_answer ? '✓ Correct' : '✗ Incorrect'}`
-                              ).join('\n\n');
-                              
-                              alert(`Detailed Response for ${response.student_name}\n\n${details}`);
-                            }}
-                            className="text-blue-600 hover:text-blue-900 transition-colors"
-                          >
-                            View Details
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+        </form>
       </div>
     </div>
   );
 };
 
-export default QuizResults;
+export default TakeQuiz;
