@@ -168,12 +168,6 @@ const TakeQuiz: React.FC = () => {
                 {quizUnavailableReason || 'This quiz is either inactive, not yet available, or has expired.'}
               </p>
             </div>
-            <Link
-              to="/"
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors inline-block"
-            >
-              Go to Home
-            </Link>
           </div>
         </div>
       </div>
