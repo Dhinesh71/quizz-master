@@ -5,7 +5,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { Question } from '../types/database';
 import Navbar from '../components/Navbar';
 import LoadingSpinner from '../components/LoadingSpinner';
-import { Plus, Trash2, MoveUp, MoveDown, Save, Eye } from 'lucide-react';
+import { Plus, Trash2, MoveUp, MoveDown, Save, Eye, Wand2, X } from 'lucide-react';
+import { generateQuizContent } from '../lib/groq';
 
 const CreateQuiz: React.FC = () => {
   const [title, setTitle] = useState('');
@@ -21,6 +22,13 @@ const CreateQuiz: React.FC = () => {
   ]);
   const [loading, setLoading] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
+
+  // AI Generation State
+  const [showAIModal, setShowAIModal] = useState(false);
+  const [aiTopic, setAiTopic] = useState('');
+  const [aiCount, setAiCount] = useState(5);
+  const [aiDifficulty, setAiDifficulty] = useState('Medium');
+  const [aiLoading, setAiLoading] = useState(false);
 
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -88,6 +96,35 @@ const CreateQuiz: React.FC = () => {
       newQuestions[questionIndex].correct_answer = value;
     }
     setQuestions(newQuestions);
+  };
+
+  const handleAIGenerate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!aiTopic.trim()) return;
+
+    setAiLoading(true);
+    try {
+      const generatedQuiz = await generateQuizContent(aiTopic, aiCount, aiDifficulty);
+
+      setTitle(generatedQuiz.title);
+      setDescription(generatedQuiz.description);
+
+      const newQuestions = generatedQuiz.questions.map((q, index) => ({
+        tempId: `ai-q-${Date.now()}-${index}`,
+        question_text: q.questionText,
+        options: q.options,
+        correct_answer: q.options[q.correctAnswer],
+        order_index: index
+      }));
+
+      setQuestions(newQuestions);
+      setShowAIModal(false);
+    } catch (error) {
+      console.error('AI Generation failed:', error);
+      alert('Failed to generate quiz with AI. Please check your API key and try again.');
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   const validateForm = () => {
@@ -230,9 +267,18 @@ const CreateQuiz: React.FC = () => {
       <Navbar />
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Create New Quiz</h1>
-          <p className="text-gray-600 mt-2">Build your quiz with multiple choice questions</p>
+        <div className="mb-8 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Create New Quiz</h1>
+            <p className="text-gray-600 mt-2">Build your quiz manually or generate with AI</p>
+          </div>
+          <button
+            onClick={() => setShowAIModal(true)}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
+          >
+            <Wand2 className="h-5 w-5" />
+            Generate with AI
+          </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-8">
@@ -336,35 +382,53 @@ const CreateQuiz: React.FC = () => {
                       Answer Options * (Select the correct answer)
                     </label>
                     <div className="space-y-2 sm:space-y-3">
-                      {question.options.map((option, optionIndex) => (
-                        <div key={optionIndex} className="flex items-center space-x-2 sm:space-x-3">
-                          <input
-                            type="radio"
-                            name={`correct-${questionIndex}`}
-                            checked={question.correct_answer === option}
-                            onChange={() => updateQuestion(questionIndex, 'correct_answer', option)}
-                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 flex-shrink-0"
-                          />
-                          <input
-                            type="text"
-                            value={option}
-                            onChange={(e) => updateOption(questionIndex, optionIndex, e.target.value)}
-                            className="flex-1 border border-gray-300 rounded-lg px-2 sm:px-3 py-1 sm:py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-sm sm:text-base"
-                            placeholder={`Option ${optionIndex + 1}`}
-                            required
-                          />
-                          {question.options.length > 2 && (
-                            <button
-                              type="button"
-                              onClick={() => removeOption(questionIndex, optionIndex)}
-                              className="p-1 sm:p-2 text-red-400 hover:text-red-600 transition-colors flex-shrink-0"
-                              title="Remove option"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          )}
-                        </div>
-                      ))}
+                      {question.options.map((option, optionIndex) => {
+                        const isCorrectAnswer = question.correct_answer === option && option.trim() !== '';
+                        return (
+                          <div
+                            key={optionIndex}
+                            className={`flex items-center space-x-2 sm:space-x-3 p-2 rounded-lg transition-colors ${isCorrectAnswer ? 'bg-green-50 border border-green-300' : 'border border-transparent'
+                              }`}
+                          >
+                            <input
+                              type="radio"
+                              id={`correct-${questionIndex}-${optionIndex}`}
+                              name={`correct-answer-question-${questionIndex}`}
+                              value={option}
+                              checked={isCorrectAnswer}
+                              onChange={() => {
+                                if (option.trim() !== '') {
+                                  updateQuestion(questionIndex, 'correct_answer', option);
+                                }
+                              }}
+                              disabled={option.trim() === ''}
+                              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 flex-shrink-0 cursor-pointer"
+                              title={option.trim() === '' ? 'Fill in the option first' : 'Select as correct answer'}
+                            />
+                            <input
+                              type="text"
+                              value={option}
+                              onChange={(e) => updateOption(questionIndex, optionIndex, e.target.value)}
+                              className="flex-1 border border-gray-300 rounded-lg px-2 sm:px-3 py-1 sm:py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-sm sm:text-base"
+                              placeholder={`Option ${optionIndex + 1}`}
+                              required
+                            />
+                            {isCorrectAnswer && (
+                              <span className="text-green-600 text-sm font-medium flex-shrink-0">✓ Correct</span>
+                            )}
+                            {question.options.length > 2 && (
+                              <button
+                                type="button"
+                                onClick={() => removeOption(questionIndex, optionIndex)}
+                                className="p-1 sm:p-2 text-red-400 hover:text-red-600 transition-colors flex-shrink-0"
+                                title="Remove option"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
 
                     {question.options.length < 5 && (
@@ -421,6 +485,119 @@ const CreateQuiz: React.FC = () => {
             </button>
           </div>
         </form>
+
+        {/* AI Generation Modal */}
+        {showAIModal && (
+          <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+            <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+              <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onClick={() => setShowAIModal(false)}></div>
+
+              <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+              <div className="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+                {/* Close Button at top-right */}
+                <div className="absolute top-0 right-0 pt-4 pr-4">
+                  <button
+                    type="button"
+                    className="bg-white rounded-md text-gray-400 hover:text-gray-500 focus:outline-none"
+                    onClick={() => setShowAIModal(false)}
+                  >
+                    <span className="sr-only">Close</span>
+                    <X className="h-6 w-6" />
+                  </button>
+                </div>
+
+                <div className="sm:flex sm:items-start">
+                  <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-indigo-100 sm:mx-0 sm:h-10 sm:w-10">
+                    <Wand2 className="h-6 w-6 text-indigo-600" />
+                  </div>
+                  <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                    <h3 className="text-lg leading-6 font-medium text-gray-900" id="modal-title">
+                      Generate Quiz with AI
+                    </h3>
+                    <div className="mt-2 text-sm text-gray-500">
+                      <p>Describe your quiz topic or paste study notes. The AI will generate questions for you.</p>
+                    </div>
+
+                    <form onSubmit={handleAIGenerate} className="mt-5 space-y-4">
+                      <div>
+                        <label htmlFor="ai-topic" className="block text-sm font-medium text-gray-700">
+                          Topic / Study Notes
+                        </label>
+                        <textarea
+                          id="ai-topic"
+                          rows={4}
+                          className="mt-1 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md p-2 border"
+                          placeholder="e.g. World History, Python Loops, or paste text..."
+                          value={aiTopic}
+                          onChange={(e) => setAiTopic(e.target.value)}
+                          required
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label htmlFor="ai-count" className="block text-sm font-medium text-gray-700">
+                            Number of Questions
+                          </label>
+                          <input
+                            type="number"
+                            id="ai-count"
+                            min={1}
+                            value={aiCount}
+                            onChange={(e) => setAiCount(Number(e.target.value))}
+                            className="mt-1 block w-full pl-3 pr-3 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border"
+                            placeholder="Enter number of questions"
+                          />
+                        </div>
+
+                        <div>
+                          <label htmlFor="ai-difficulty" className="block text-sm font-medium text-gray-700">
+                            Difficulty
+                          </label>
+                          <select
+                            id="ai-difficulty"
+                            value={aiDifficulty}
+                            onChange={(e) => setAiDifficulty(e.target.value)}
+                            className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border"
+                          >
+                            <option value="Easy">Easy</option>
+                            <option value="Medium">Medium</option>
+                            <option value="Hard">Hard</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
+                        <button
+                          type="submit"
+                          disabled={aiLoading}
+                          className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
+                        >
+                          {aiLoading ? (
+                            <>
+                              <LoadingSpinner size="small" />
+                              <span className="ml-2">Generating...</span>
+                            </>
+                          ) : (
+                            'Generate Questions'
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:w-auto sm:text-sm"
+                          onClick={() => setShowAIModal(false)}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
