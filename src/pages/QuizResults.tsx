@@ -22,6 +22,7 @@ const QuizResults: React.FC = () => {
   }, [id, user]);
 
   const fetchData = async () => {
+    if (!id || !user) return;
     try {
       // Fetch quiz
       const { data: quizData, error: quizError } = await supabase
@@ -68,7 +69,7 @@ const QuizResults: React.FC = () => {
 
     const totalScore = responses.reduce((sum, response) => sum + response.score, 0);
     const averageScore = totalScore / responses.length;
-    const averagePercentage = (averageScore / questions.length) * 100;
+    const averagePercentage = questions.length > 0 ? (averageScore / questions.length) * 100 : 0;
 
     return {
       averageScore: Math.round(averageScore * 10) / 10,
@@ -156,7 +157,7 @@ const QuizResults: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
-      
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
@@ -172,7 +173,7 @@ const QuizResults: React.FC = () => {
               <p className="text-gray-600 mt-1">Quiz Results & Analytics</p>
             </div>
           </div>
-          
+
           <div className="flex justify-between items-center">
             <div className="text-sm text-gray-500">
               Created on {new Date(quiz.created_at).toLocaleDateString()}
@@ -295,13 +296,12 @@ const QuizResults: React.FC = () => {
                           </div>
                         </td>
                         <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            percentage >= 80
-                              ? 'bg-green-100 text-green-800'
-                              : percentage >= 60
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${percentage >= 80
+                            ? 'bg-green-100 text-green-800'
+                            : percentage >= 60
                               ? 'bg-yellow-100 text-yellow-800'
                               : 'bg-red-100 text-red-800'
-                          }`}>
+                            }`}>
                             {percentage}%
                           </span>
                         </td>
@@ -312,10 +312,10 @@ const QuizResults: React.FC = () => {
                         <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <button
                             onClick={() => {
-                              const details = questions.map((question, index) => 
+                              const details = questions.map((question, index) =>
                                 `${index + 1}. ${question.question_text}\nStudent Answer: ${response.answers[index]}\nCorrect Answer: ${question.correct_answer}\n${response.answers[index] === question.correct_answer ? '✓ Correct' : '✗ Incorrect'}`
                               ).join('\n\n');
-                              
+
                               alert(`Detailed Response for ${response.student_name}\n\n${details}`);
                             }}
                             className="text-blue-600 hover:text-blue-900 transition-colors"

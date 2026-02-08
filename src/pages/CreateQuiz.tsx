@@ -10,8 +10,9 @@ import { Plus, Trash2, MoveUp, MoveDown, Save, Eye } from 'lucide-react';
 const CreateQuiz: React.FC = () => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [questions, setQuestions] = useState<Omit<Question, 'id' | 'quiz_id'>[]>([
+  const [questions, setQuestions] = useState<(Omit<Question, 'id' | 'quiz_id'> & { tempId: string })[]>([
     {
+      tempId: 'init-1',
       question_text: '',
       options: ['', ''],
       correct_answer: '',
@@ -20,7 +21,7 @@ const CreateQuiz: React.FC = () => {
   ]);
   const [loading, setLoading] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
-  
+
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -28,6 +29,7 @@ const CreateQuiz: React.FC = () => {
     setQuestions([
       ...questions,
       {
+        tempId: `q-${Date.now()}`,
         question_text: '',
         options: ['', ''],
         correct_answer: '',
@@ -45,14 +47,14 @@ const CreateQuiz: React.FC = () => {
   const moveQuestion = (index: number, direction: 'up' | 'down') => {
     const newQuestions = [...questions];
     const newIndex = direction === 'up' ? index - 1 : index + 1;
-    
+
     if (newIndex < 0 || newIndex >= newQuestions.length) return;
-    
+
     [newQuestions[index], newQuestions[newIndex]] = [newQuestions[newIndex], newQuestions[index]];
     setQuestions(newQuestions.map((q, i) => ({ ...q, order_index: i })));
   };
 
-  const updateQuestion = (index: number, field: keyof Omit<Question, 'id' | 'quiz_id'>, value: any) => {
+  const updateQuestion = (index: number, field: keyof Omit<Question, 'id' | 'quiz_id'>, value: string | string[]) => {
     const newQuestions = [...questions];
     newQuestions[index] = { ...newQuestions[index], [field]: value };
     setQuestions(newQuestions);
@@ -78,7 +80,13 @@ const CreateQuiz: React.FC = () => {
 
   const updateOption = (questionIndex: number, optionIndex: number, value: string) => {
     const newQuestions = [...questions];
+    const oldValue = newQuestions[questionIndex].options[optionIndex];
     newQuestions[questionIndex].options[optionIndex] = value;
+
+    // Update correct answer if it was the old option value
+    if (newQuestions[questionIndex].correct_answer === oldValue) {
+      newQuestions[questionIndex].correct_answer = value;
+    }
     setQuestions(newQuestions);
   };
 
@@ -90,7 +98,7 @@ const CreateQuiz: React.FC = () => {
 
     for (let i = 0; i < questions.length; i++) {
       const question = questions[i];
-      
+
       if (!question.question_text.trim()) {
         alert(`Please enter text for question ${i + 1}`);
         return false;
@@ -129,15 +137,15 @@ const CreateQuiz: React.FC = () => {
           description: description.trim() || null,
           created_by: user.id,
           is_active: true
-        })
+        } as any)
         .select()
         .single();
 
-      if (quizError) throw quizError;
+      if (quizError || !quiz) throw quizError;
 
       // Create questions
       const questionsToInsert = questions.map((question) => ({
-        quiz_id: quiz.id,
+        quiz_id: (quiz as any).id,
         question_text: question.question_text.trim(),
         options: question.options.map(opt => opt.trim()),
         correct_answer: question.correct_answer.trim(),
@@ -146,7 +154,7 @@ const CreateQuiz: React.FC = () => {
 
       const { error: questionsError } = await supabase
         .from('questions')
-        .insert(questionsToInsert);
+        .insert(questionsToInsert as any);
 
       if (questionsError) throw questionsError;
 
@@ -163,7 +171,7 @@ const CreateQuiz: React.FC = () => {
     return (
       <div className="min-h-screen bg-gray-50">
         <Navbar />
-        
+
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="mb-6 flex justify-between items-center">
             <h1 className="text-2xl font-bold text-gray-900">Quiz Preview</h1>
@@ -187,7 +195,7 @@ const CreateQuiz: React.FC = () => {
                   <h3 className="text-xl font-semibold text-gray-900 mb-4">
                     {index + 1}. {question.question_text}
                   </h3>
-                  
+
                   <div className="space-y-3">
                     {question.options.map((option, optionIndex) => (
                       <label
@@ -198,6 +206,7 @@ const CreateQuiz: React.FC = () => {
                           type="radio"
                           name={`preview-question-${index}`}
                           value={option}
+                          readOnly
                           className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
                         />
                         <span className="ml-3 text-gray-900">{option}</span>
@@ -219,7 +228,7 @@ const CreateQuiz: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
-      
+
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Create New Quiz</h1>
@@ -230,7 +239,7 @@ const CreateQuiz: React.FC = () => {
           {/* Quiz Details */}
           <div className="bg-white rounded-lg shadow-md p-6">
             <h2 className="text-xl font-semibold text-gray-900 mb-6">Quiz Details</h2>
-            
+
             <div className="space-y-4 sm:space-y-6">
               <div>
                 <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
@@ -266,7 +275,7 @@ const CreateQuiz: React.FC = () => {
           {/* Questions */}
           <div className="space-y-4 sm:space-y-6">
             {questions.map((question, questionIndex) => (
-              <div key={questionIndex} className="bg-white rounded-lg shadow-md p-6">
+              <div key={question.tempId} className="bg-white rounded-lg shadow-md p-6">
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 sm:mb-6 gap-2">
                   <h3 className="text-lg font-semibold text-gray-900">
                     Question {questionIndex + 1}
@@ -397,7 +406,7 @@ const CreateQuiz: React.FC = () => {
               <Eye className="h-5 w-5" />
               Preview Quiz
             </button>
-            
+
             <button
               type="submit"
               disabled={loading}

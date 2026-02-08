@@ -15,6 +15,10 @@ const TakeQuiz: React.FC = () => {
   const [score, setScore] = useState(0);
   const [error, setError] = useState('');
 
+  // Step state: 'info' -> 'quiz' -> 'submitted' happens effectively via 'submitted' state, but we need an intermediate
+  const [step, setStep] = useState<'info' | 'quiz'>('info');
+  const [checkingInfo, setCheckingInfo] = useState(false);
+
   // Student info
   const [studentName, setStudentName] = useState('');
   const [studentEmail, setStudentEmail] = useState('');
@@ -31,16 +35,17 @@ const TakeQuiz: React.FC = () => {
   }, [id]);
 
   const fetchQuiz = async () => {
+    if (!id) return;
     try {
       // Fetch quiz (accessible to anonymous users if active and within time bounds)
-      const { data: quizData, error: quizError } = await supabase
+      const { data, error: quizError } = await supabase
         .from('quizzes')
         .select('*')
         .eq('id', id)
         .single();
 
-      if (quizError) {
-        if (quizError.code === 'PGRST116') {
+      if (quizError || !data) {
+        if (quizError?.code === 'PGRST116') {
           setError('Quiz not found or not accessible at this time.');
         } else {
           setError('Failed to load quiz. Please try again.');
@@ -48,6 +53,8 @@ const TakeQuiz: React.FC = () => {
         setLoading(false);
         return;
       }
+
+      const quizData = data as unknown as Quiz;
 
       // Check if quiz is accessible
       if (!quizData.is_active) {
@@ -93,30 +100,56 @@ const TakeQuiz: React.FC = () => {
     }
   };
 
+  const checkPreviousSubmission = async () => {
+    if (!id) return false;
+
+    const { data, error } = await supabase
+      .from('responses')
+      .select('id')
+      .eq('quiz_id', id)
+      .or(`student_email.eq.${studentEmail},student_register_number.eq.${studentRegisterNumber}`)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error checking previous submission:', error);
+      // We'll let them proceed if there's an error checking, to avoid blocking valid users due to technical issues
+      // Alternatively, we could block them.
+      return false;
+    }
+
+    return !!data;
+  };
+
+  const handleInfoSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!studentName.trim() || !studentEmail.trim() || !studentPhone.trim() || !studentRegisterNumber.trim()) {
+      alert('Please fill in all fields');
+      return;
+    }
+
+    setCheckingInfo(true);
+    try {
+      const alreadySubmitted = await checkPreviousSubmission();
+      if (alreadySubmitted) {
+        alert('You have already submitted a response for this quiz.');
+        return;
+      }
+      setStep('quiz');
+    } catch (err) {
+      console.error(err);
+      alert('Something went wrong. Please try again.');
+    } finally {
+      setCheckingInfo(false);
+    }
+  };
+
   const handleAnswerChange = (questionIndex: number, answer: string) => {
     const newAnswers = [...answers];
     newAnswers[questionIndex] = answer;
     setAnswers(newAnswers);
   };
 
-  const validateForm = () => {
-    if (!studentName.trim()) {
-      alert('Please enter your name');
-      return false;
-    }
-    if (!studentEmail.trim()) {
-      alert('Please enter your email');
-      return false;
-    }
-    if (!studentPhone.trim()) {
-      alert('Please enter your phone number');
-      return false;
-    }
-    if (!studentRegisterNumber.trim()) {
-      alert('Please enter your register number');
-      return false;
-    }
-
+  const validateQuizForm = () => {
     // Check if all questions are answered
     for (let i = 0; i < questions.length; i++) {
       if (!answers[i]) {
@@ -124,16 +157,22 @@ const TakeQuiz: React.FC = () => {
         return false;
       }
     }
-
     return true;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validateForm()) return;
+    if (!validateQuizForm()) return;
 
     setSubmitting(true);
     try {
+      // Double check before final submit
+      const alreadySubmitted = await checkPreviousSubmission();
+      if (alreadySubmitted) {
+        alert('You have already submitted a response for this quiz.');
+        return;
+      }
+
       // Calculate score
       let correctAnswers = 0;
       questions.forEach((question, index) => {
@@ -154,7 +193,7 @@ const TakeQuiz: React.FC = () => {
           answers,
           score: correctAnswers,
           total_questions: questions.length
-        });
+        } as any);
 
       if (error) throw error;
 
@@ -200,7 +239,7 @@ const TakeQuiz: React.FC = () => {
           </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Quiz Submitted!</h1>
           <p className="text-gray-600 mb-4">Thank you for taking the quiz.</p>
-          
+
           <div className="bg-white rounded-lg shadow-md p-6 mb-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Your Results</h2>
             <div className="space-y-2">
@@ -210,10 +249,9 @@ const TakeQuiz: React.FC = () => {
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Percentage:</span>
-                <span className={`font-medium ${
-                  percentage >= 80 ? 'text-green-600' : 
+                <span className={`font-medium ${percentage >= 80 ? 'text-green-600' :
                   percentage >= 60 ? 'text-yellow-600' : 'text-red-600'
-                }`}>
+                  }`}>
                   {percentage}%
                 </span>
               </div>
@@ -247,7 +285,7 @@ const TakeQuiz: React.FC = () => {
           {quiz.description && (
             <p className="text-gray-600 mb-6 text-lg leading-relaxed">{quiz.description}</p>
           )}
-          
+
           <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 text-sm text-gray-500">
             <div className="flex items-center">
               <Clock className="h-4 w-4 mr-1" />
@@ -257,10 +295,10 @@ const TakeQuiz: React.FC = () => {
               <div className="flex items-center flex-wrap">
                 <AlertCircle className="h-4 w-4 mr-1" />
                 <span className="break-words">
-                  Available until {new Date(quiz.valid_until).toLocaleDateString()} at {new Date(quiz.valid_until).toLocaleTimeString('en-US', { 
-                    hour: '2-digit', 
+                  Available until {new Date(quiz.valid_until).toLocaleDateString()} at {new Date(quiz.valid_until).toLocaleTimeString('en-US', {
+                    hour: '2-digit',
                     minute: '2-digit',
-                    hour12: true 
+                    hour12: true
                   })}
                 </span>
               </div>
@@ -268,121 +306,138 @@ const TakeQuiz: React.FC = () => {
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-8">
-          {/* Student Information */}
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-6">Student Information</h2>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <User className="h-4 w-4 inline mr-1" />
-                  Full Name *
-                </label>
-                <input
-                  type="text"
-                  value={studentName}
-                  onChange={(e) => setStudentName(e.target.value)}
-                  className="block w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                  placeholder="Enter your full name"
-                  required
-                />
-              </div>
+        {step === 'info' ? (
+          <form onSubmit={handleInfoSubmit} className="space-y-8">
+            {/* Student Information Form */}
+            <div className="bg-white rounded-lg shadow-md p-6">
+              <h2 className="text-xl font-semibold text-gray-900 mb-6">Student Information</h2>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <Mail className="h-4 w-4 inline mr-1" />
-                  Email Address *
-                </label>
-                <input
-                  type="email"
-                  value={studentEmail}
-                  onChange={(e) => setStudentEmail(e.target.value)}
-                  className="block w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                  placeholder="Enter your email"
-                  required
-                />
-              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <User className="h-4 w-4 inline mr-1" />
+                    Full Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={studentName}
+                    onChange={(e) => setStudentName(e.target.value)}
+                    className="block w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    placeholder="Enter your full name"
+                    required
+                  />
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <Phone className="h-4 w-4 inline mr-1" />
-                  Phone Number *
-                </label>
-                <input
-                  type="tel"
-                  value={studentPhone}
-                  onChange={(e) => setStudentPhone(e.target.value)}
-                  className="block w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                  placeholder="Enter your phone number"
-                  required
-                />
-              </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <Mail className="h-4 w-4 inline mr-1" />
+                    Email Address *
+                  </label>
+                  <input
+                    type="email"
+                    value={studentEmail}
+                    onChange={(e) => setStudentEmail(e.target.value)}
+                    className="block w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    placeholder="Enter your email"
+                    required
+                  />
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <Hash className="h-4 w-4 inline mr-1" />
-                  Register Number *
-                </label>
-                <input
-                  type="text"
-                  value={studentRegisterNumber}
-                  onChange={(e) => setStudentRegisterNumber(e.target.value)}
-                  className="block w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                  placeholder="Enter your register number"
-                  required
-                />
-              </div>
-            </div>
-          </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <Phone className="h-4 w-4 inline mr-1" />
+                    Phone Number *
+                  </label>
+                  <input
+                    type="tel"
+                    value={studentPhone}
+                    onChange={(e) => setStudentPhone(e.target.value)}
+                    className="block w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    placeholder="Enter your phone number"
+                    required
+                  />
+                </div>
 
-          {/* Questions */}
-          <div className="space-y-6">
-            {questions.map((question, index) => (
-              <div key={question.id} className="bg-white rounded-lg shadow-md p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                  {index + 1}. {question.question_text}
-                </h3>
-                
-                <div className="space-y-3">
-                  {question.options.map((option, optionIndex) => (
-                    <label
-                      key={optionIndex}
-                      className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
-                    >
-                      <input
-                        type="radio"
-                        name={`question-${index}`}
-                        value={option}
-                        checked={answers[index] === option}
-                        onChange={() => handleAnswerChange(index, option)}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
-                        required
-                      />
-                      <span className="ml-3 text-gray-900">{option}</span>
-                    </label>
-                  ))}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <Hash className="h-4 w-4 inline mr-1" />
+                    Register Number *
+                  </label>
+                  <input
+                    type="text"
+                    value={studentRegisterNumber}
+                    onChange={(e) => setStudentRegisterNumber(e.target.value)}
+                    className="block w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    placeholder="Enter your register number"
+                    required
+                  />
                 </div>
               </div>
-            ))}
-          </div>
+            </div>
 
-          {/* Submit Button */}
-          <div className="text-center">
-            <button
-              type="submit"
-              disabled={submitting}
-              className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-8 py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 mx-auto"
-            >
-              {submitting ? (
-                <LoadingSpinner size="small" />
-              ) : (
-                <CheckCircle className="h-5 w-5" />
-              )}
-              {submitting ? 'Submitting...' : 'Submit Quiz'}
-            </button>
-          </div>
-        </form>
+            <div className="text-center">
+              <button
+                type="submit"
+                disabled={checkingInfo}
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-8 py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 mx-auto"
+              >
+                {checkingInfo ? (
+                  <LoadingSpinner size="small" />
+                ) : null}
+                {checkingInfo ? 'Checking eligibility...' : 'Start Quiz'}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-8">
+            {/* Questions */}
+            <div className="space-y-6">
+              {questions.map((question, index) => (
+                <div key={question.id} className="bg-white rounded-lg shadow-md p-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                    {index + 1}. {question.question_text}
+                  </h3>
+
+                  <div className="space-y-3">
+                    {question.options.map((option, optionIndex) => (
+                      <label
+                        key={optionIndex}
+                        className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                      >
+                        <input
+                          type="radio"
+                          name={`question-${index}`}
+                          value={option}
+                          checked={answers[index] === option}
+                          onChange={() => handleAnswerChange(index, option)}
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                          required
+                        />
+                        <span className="ml-3 text-gray-900">{option}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Submit Button */}
+            <div className="text-center">
+              <button
+                type="submit"
+                disabled={submitting}
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-8 py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 mx-auto"
+              >
+                {submitting ? (
+                  <LoadingSpinner size="small" />
+                ) : (
+                  <CheckCircle className="h-5 w-5" />
+                )}
+                {submitting ? 'Submitting...' : 'Submit Quiz'}
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   );
