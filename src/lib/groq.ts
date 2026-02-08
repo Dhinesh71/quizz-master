@@ -247,13 +247,14 @@ export const generateQuizContent = async (
         throw new Error('Missing Groq API Key. Please add VITE_GROQ_API_KEY to your .env file or configuration.');
     }
 
-    // For large requests (40+ questions), use chunking strategy for better reliability
-    if (count >= 40) {
+    // For requests > 25 questions, use chunking strategy for better reliability
+    // 25 is the chunk size, so anything larger should be chunked
+    if (count > 25) {
         console.log(`Large request detected (${count} questions). Using chunking strategy...`);
         return generateQuizInChunks(topic, count, difficulty);
     }
 
-    // For smaller requests, use single batch with retry logic
+    // For smaller requests (<= 25), use single batch with STRICT retry logic
 
     const systemPrompt = `
 You are an AI Quiz Generation Engine working inside an existing production web application called "QuizMaster".
@@ -396,9 +397,9 @@ Count the questions before returning to ensure you have exactly ${count} questio
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: userContent },
             ],
-            model: 'llama-3.3-70b-versatile', // High performance model for complex tasks
+            model: 'llama-3.3-70b-versatile',
             temperature: 0.5,
-            max_tokens: 8000, // Increased to handle large question counts
+            max_tokens: 8000,
             response_format: { type: 'json_object' },
         });
 
@@ -410,17 +411,12 @@ Count the questions before returning to ensure you have exactly ${count} questio
         const result = JSON.parse(content) as AIQuizResponse;
 
         // Validate that we got the correct number of questions
-        if (result.questions.length !== count) {
-            console.warn(`AI generated ${result.questions.length} questions instead of ${count}. Retrying...`);
+        if (result.questions.length < count) {
+            console.warn(`AI generated ${result.questions.length} questions instead of ${count}. Fetching missing questions...`);
 
-            // If we're close (within 10%), accept it
-            const tolerance = Math.max(1, Math.floor(count * 0.1)); // 10% tolerance
-            if (Math.abs(result.questions.length - count) <= tolerance) {
-                console.log(`Accepting ${result.questions.length} questions (within tolerance)`);
-                return result;
-            }
+            const missingCount = count - result.questions.length;
 
-            // Otherwise, try one more time with a more explicit prompt
+            // Smarter retry: Only ask for the MISSING questions, then append them
             const retryCompletion = await groq.chat.completions.create({
                 messages: [
                     { role: 'system', content: systemPrompt },
@@ -431,20 +427,29 @@ Count the questions before returning to ensure you have exactly ${count} questio
                     },
                     {
                         role: 'user',
-                        content: `You generated ${result.questions.length} questions, but I need EXACTLY ${count} questions. Please generate ${count - result.questions.length} more questions on the same topic to reach exactly ${count} total questions. Return the complete quiz with all ${count} questions.`
+                        content: `You generated ${result.questions.length} questions, but I need EXACTLY ${count}. Please generate ${missingCount} MORE unique questions on the same topic to complete the set. Return a JSON object with the "questions" array containing ONLY the ${missingCount} new questions.`
                     },
                 ],
                 model: 'llama-3.3-70b-versatile',
                 temperature: 0.5,
-                max_tokens: 8000,
+                max_tokens: 4000,
                 response_format: { type: 'json_object' },
             });
 
             const retryContent = retryCompletion.choices[0]?.message?.content;
             if (retryContent) {
                 const retryResult = JSON.parse(retryContent) as AIQuizResponse;
-                console.log(`Retry generated ${retryResult.questions.length} questions`);
-                return retryResult;
+                console.log(`Retry generated ${retryResult.questions.length} additional questions`);
+
+                // Combine the original questions with the new ones
+                if (retryResult.questions && Array.isArray(retryResult.questions)) {
+                    result.questions = [...result.questions, ...retryResult.questions];
+
+                    // If we somehow got more than needed (unlikely with this prompt but possible), slice it
+                    if (result.questions.length > count) {
+                        result.questions = result.questions.slice(0, count);
+                    }
+                }
             }
         }
 
