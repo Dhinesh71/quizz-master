@@ -9,7 +9,8 @@ This document provides step-by-step instructions for **Quiz Creators** (Teachers
 ## 👨‍🏫 For Quiz Creators (Teachers/Admins)
 
 ### 1. Account Setup
-- **Sign Up/Login**: Create an account or log in with your email and password to access the dashboard.
+- **Sign Up/Login**: Create an account or log in with your email and password.
+- **Google Login**: Alternatively, click **"Continue with Google"** to sign in instantly using your Google account.
 
 ### 2. Creating a Quiz
 1.  Navigate to the **Dashboard** or click **"Create Quiz"** in the navigation bar.
