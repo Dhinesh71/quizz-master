@@ -13,6 +13,10 @@ This document provides step-by-step instructions for **Quiz Creators** (Teachers
 - **Google Login**: Alternatively, click **"Continue with Google"** to sign in instantly using your Google account.
 
 ### 2. Creating a Quiz
+
+You can create quizzes in two ways: **Manually** or **Using AI**.
+
+#### Option A: Manual Quiz Creation
 1.  Navigate to the **Dashboard** or click **"Create Quiz"** in the navigation bar.
 2.  **Quiz Details**:
     -   **Title**: Enter a clear, descriptive title (e.g., "History Midterm").
@@ -21,10 +25,22 @@ This document provides step-by-step instructions for **Quiz Creators** (Teachers
     -   Type your question in the "Question Text" box.
     -   Add answer options (minimum 2, maximum 5).
     -   **Select the Correct Answer**: Click the radio button next to the correct option.
+    -   The selected option will be highlighted with a green background and "✓ Correct" label.
     -   Use the **+ Add Question** button to add more questions.
     -   Use the **Up/Down Arrows** to reorder questions.
     -   Use the **Trash Icon** to delete a question.
 4.  **Finish**: Click **"Create Quiz"** to save.
+
+#### Option B: AI-Powered Quiz Generation 🤖
+1.  Click the **"Generate with AI"** button (purple button with wand icon).
+2.  Enter your topic or paste study notes.
+3.  Choose the number of questions and difficulty level (Easy/Medium/Hard).
+4.  Click **"Generate Questions"** and wait a few seconds.
+5.  Review and edit the AI-generated questions as needed.
+6.  Click **"Create Quiz"** to save.
+
+**📖 For detailed AI feature instructions, see [AI_FEATURE_GUIDE.md](AI_FEATURE_GUIDE.md)**
+
 
 ### 3. Sharing & Managing Quizzes
 -   **Dashboard View**: You will see a list of all your created quizzes.
