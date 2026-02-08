@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Quiz, Question } from '../types/database';
 import LoadingSpinner from '../components/LoadingSpinner';
-import { CheckCircle, Clock, AlertCircle, User, Mail, Phone, Hash } from 'lucide-react';
+import { CheckCircle, Clock, AlertCircle, User, Mail, Phone, Hash, AlertTriangle } from 'lucide-react';
 
 const TakeQuiz: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -18,6 +18,9 @@ const TakeQuiz: React.FC = () => {
   // Step state: 'info' -> 'quiz' -> 'submitted' happens effectively via 'submitted' state, but we need an intermediate
   const [step, setStep] = useState<'info' | 'quiz'>('info');
   const [checkingInfo, setCheckingInfo] = useState(false);
+  const [violationCount, setViolationCount] = useState(0);
+  const [showWarning, setShowWarning] = useState(false);
+  const [warningMessage, setWarningMessage] = useState('');
 
   // Student info
   const [studentName, setStudentName] = useState('');
@@ -33,6 +36,70 @@ const TakeQuiz: React.FC = () => {
       fetchQuiz();
     }
   }, [id]);
+
+  useEffect(() => {
+    // Disable right-click, copy, cut, paste
+    const handleContextMenu = (e: MouseEvent) => e.preventDefault();
+    const handleCopyPaste = (e: ClipboardEvent) => e.preventDefault();
+
+    document.addEventListener('contextmenu', handleContextMenu);
+    document.addEventListener('copy', handleCopyPaste);
+    document.addEventListener('cut', handleCopyPaste);
+    document.addEventListener('paste', handleCopyPaste);
+
+    return () => {
+      document.removeEventListener('contextmenu', handleContextMenu);
+      document.removeEventListener('copy', handleCopyPaste);
+      document.removeEventListener('cut', handleCopyPaste);
+      document.removeEventListener('paste', handleCopyPaste);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (step !== 'quiz' || submitted) return;
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        handleViolation('Tab switching or window minimization is not allowed.');
+      }
+    };
+
+    const handleFullScreenChange = () => {
+      if (!document.fullscreenElement) {
+        handleViolation('Exiting full-screen mode is not allowed.');
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener('fullscreenchange', handleFullScreenChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      document.removeEventListener('fullscreenchange', handleFullScreenChange);
+    };
+  }, [step, submitted, violationCount]);
+
+  const handleViolation = (message: string) => {
+    const newCount = violationCount + 1;
+    setViolationCount(newCount);
+    setWarningMessage(message);
+    setShowWarning(true);
+
+    if (newCount >= 3) {
+      // Auto-submit
+      alert('Maximum violations reached. Your quiz is being submitted automatically.');
+      handleSubmit(new Event('submit') as any); // Trigger submission
+    }
+  };
+
+  const enterFullScreen = () => {
+    const elem = document.documentElement;
+    if (elem.requestFullscreen) {
+      elem.requestFullscreen().catch(err => {
+        console.error('Error attempting to enable full-screen mode:', err);
+      });
+    }
+  };
 
   const fetchQuiz = async () => {
     if (!id) return;
@@ -135,6 +202,8 @@ const TakeQuiz: React.FC = () => {
         return;
       }
       setStep('quiz');
+      // Request full screen
+      setTimeout(enterFullScreen, 100);
     } catch (err) {
       console.error(err);
       alert('Something went wrong. Please try again.');
@@ -303,8 +372,48 @@ const TakeQuiz: React.FC = () => {
                 </span>
               </div>
             )}
+            {step === 'info' && (
+              <div className="w-full mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
+                <p className="font-semibold flex items-center mb-2">
+                  <AlertTriangle className="h-4 w-4 mr-2" />
+                  Anti-Cheating Enabled
+                </p>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>This quiz is monitored.</li>
+                  <li>Do not switch tabs or minimize the browser.</li>
+                  <li>Do not exit full-screen mode.</li>
+                  <li>Copying and pasting is disabled.</li>
+                  <li><strong>3 violations will result in automatic submission.</strong></li>
+                </ul>
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Warning Modal */}
+        {showWarning && !submitted && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 text-center">
+              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
+                <AlertTriangle className="h-6 w-6 text-red-600" />
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Warning!</h3>
+              <p className="text-gray-500 mb-4">{warningMessage}</p>
+              <p className="text-sm font-semibold text-red-600 mb-6">
+                Violation {violationCount}/3
+              </p>
+              <button
+                onClick={() => {
+                  setShowWarning(false);
+                  enterFullScreen();
+                }}
+                className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:text-sm"
+              >
+                I Understand, Return to Quiz
+              </button>
+            </div>
+          </div>
+        )}
 
         {step === 'info' ? (
           <form onSubmit={handleInfoSubmit} className="space-y-8">
