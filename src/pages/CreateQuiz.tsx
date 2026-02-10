@@ -100,7 +100,7 @@ const CreateQuiz: React.FC = () => {
 
   const handleAIGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!aiTopic?.trim()) return;
+    if (!aiTopic.trim()) return;
 
     setAiLoading(true);
     try {
@@ -113,7 +113,7 @@ const CreateQuiz: React.FC = () => {
         tempId: `ai-q-${Date.now()}-${index}`,
         question_text: q.questionText,
         options: q.options,
-        correct_answer: q.options[q.correctAnswer] || '',
+        correct_answer: q.options[q.correctAnswer],
         order_index: index
       }));
 
@@ -128,7 +128,7 @@ const CreateQuiz: React.FC = () => {
   };
 
   const validateForm = () => {
-    if (!title?.trim()) {
+    if (!title.trim()) {
       alert('Please enter a quiz title');
       return false;
     }
@@ -136,17 +136,17 @@ const CreateQuiz: React.FC = () => {
     for (let i = 0; i < questions.length; i++) {
       const question = questions[i];
 
-      if (!question.question_text?.trim()) {
+      if (!question.question_text.trim()) {
         alert(`Please enter text for question ${i + 1}`);
         return false;
       }
 
-      if (question.options.some(option => !option?.trim())) {
+      if (question.options.some(option => !option.trim())) {
         alert(`Please fill in all options for question ${i + 1}`);
         return false;
       }
 
-      if (!question.correct_answer?.trim()) {
+      if (!question.correct_answer.trim()) {
         alert(`Please select a correct answer for question ${i + 1}`);
         return false;
       }
@@ -170,8 +170,8 @@ const CreateQuiz: React.FC = () => {
       const { data: quiz, error: quizError } = await supabase
         .from('quizzes')
         .insert({
-          title: title?.trim() || '',
-          description: description?.trim() || null,
+          title: title.trim(),
+          description: description.trim() || null,
           created_by: user.id,
           is_active: true
         } as any)
@@ -183,9 +183,9 @@ const CreateQuiz: React.FC = () => {
       // Create questions
       const questionsToInsert = questions.map((question) => ({
         quiz_id: (quiz as any).id,
-        question_text: question.question_text?.trim() || '',
-        options: question.options.map(opt => opt?.trim() || ''),
-        correct_answer: question.correct_answer?.trim() || '',
+        question_text: question.question_text.trim(),
+        options: question.options.map(opt => opt.trim()),
+        correct_answer: question.correct_answer.trim(),
         order_index: question.order_index
       }));
 
@@ -383,7 +383,7 @@ const CreateQuiz: React.FC = () => {
                     </label>
                     <div className="space-y-2 sm:space-y-3">
                       {question.options.map((option, optionIndex) => {
-                        const isCorrectAnswer = question.correct_answer === option && (option?.trim() || '') !== '';
+                        const isCorrectAnswer = question.correct_answer === option && option.trim() !== '';
                         return (
                           <div
                             key={optionIndex}
@@ -397,13 +397,13 @@ const CreateQuiz: React.FC = () => {
                               value={option}
                               checked={isCorrectAnswer}
                               onChange={() => {
-                                if ((option?.trim() || '') !== '') {
+                                if (option.trim() !== '') {
                                   updateQuestion(questionIndex, 'correct_answer', option);
                                 }
                               }}
-                              disabled={(option?.trim() || '') === ''}
+                              disabled={option.trim() === ''}
                               className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 flex-shrink-0 cursor-pointer"
-                              title={(option?.trim() || '') === '' ? 'Fill in the option first' : 'Select as correct answer'}
+                              title={option.trim() === '' ? 'Fill in the option first' : 'Select as correct answer'}
                             />
                             <input
                               type="text"
@@ -464,7 +464,7 @@ const CreateQuiz: React.FC = () => {
             <button
               type="button"
               onClick={() => setPreviewMode(true)}
-              disabled={!title?.trim() || questions.some(q => !q.question_text?.trim())}
+              disabled={!title.trim() || questions.some(q => !q.question_text.trim())}
               className="bg-gray-600 hover:bg-gray-700 disabled:bg-gray-400 text-white px-6 sm:px-8 py-2 sm:py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 text-sm sm:text-base"
             >
               <Eye className="h-5 w-5" />
