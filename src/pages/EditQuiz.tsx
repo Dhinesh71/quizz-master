@@ -15,48 +15,50 @@ const EditQuiz: React.FC = () => {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  
+
   const { user } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
+    const fetchQuiz = async () => {
+      try {
+        // Fetch quiz
+        const { data: quizData, error: quizError } = await supabase
+          .from('quizzes')
+          .select('*')
+          .eq('id', id)
+          .eq('created_by', user?.id)
+          .single();
+
+        if (quizError) throw quizError;
+
+        // Fetch questions
+        const { data: questionsData, error: questionsError } = await supabase
+          .from('questions')
+          .select('*')
+          .eq('quiz_id', id)
+          .order('order_index');
+
+        if (questionsError) throw questionsError;
+
+        setQuiz(quizData);
+        setTitle(quizData.title);
+        setDescription(quizData.description || '');
+        setQuestions(questionsData);
+      } catch (error) {
+        console.error('Error fetching quiz:', error);
+        navigate('/dashboard');
+      } finally {
+        setLoading(false);
+      }
+    };
+
     if (id && user) {
       fetchQuiz();
     }
-  }, [id, user]);
+  }, [id, user, navigate]);
 
-  const fetchQuiz = async () => {
-    try {
-      // Fetch quiz
-      const { data: quizData, error: quizError } = await supabase
-        .from('quizzes')
-        .select('*')
-        .eq('id', id)
-        .eq('created_by', user?.id)
-        .single();
 
-      if (quizError) throw quizError;
-
-      // Fetch questions
-      const { data: questionsData, error: questionsError } = await supabase
-        .from('questions')
-        .select('*')
-        .eq('quiz_id', id)
-        .order('order_index');
-
-      if (questionsError) throw questionsError;
-
-      setQuiz(quizData);
-      setTitle(quizData.title);
-      setDescription(quizData.description || '');
-      setQuestions(questionsData);
-    } catch (error) {
-      console.error('Error fetching quiz:', error);
-      navigate('/dashboard');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const addQuestion = () => {
     const newQuestion: Question = {
@@ -72,9 +74,9 @@ const EditQuiz: React.FC = () => {
 
   const removeQuestion = async (index: number) => {
     if (questions.length === 1) return;
-    
+
     const question = questions[index];
-    
+
     // If it's an existing question (has real ID), delete from database
     if (!question.id.startsWith('temp-')) {
       try {
@@ -84,7 +86,7 @@ const EditQuiz: React.FC = () => {
         return;
       }
     }
-    
+
     const newQuestions = questions.filter((_, i) => i !== index);
     setQuestions(newQuestions.map((q, i) => ({ ...q, order_index: i })));
   };
@@ -92,14 +94,14 @@ const EditQuiz: React.FC = () => {
   const moveQuestion = (index: number, direction: 'up' | 'down') => {
     const newQuestions = [...questions];
     const newIndex = direction === 'up' ? index - 1 : index + 1;
-    
+
     if (newIndex < 0 || newIndex >= newQuestions.length) return;
-    
+
     [newQuestions[index], newQuestions[newIndex]] = [newQuestions[newIndex], newQuestions[index]];
     setQuestions(newQuestions.map((q, i) => ({ ...q, order_index: i })));
   };
 
-  const updateQuestion = (index: number, field: keyof Question, value: any) => {
+  const updateQuestion = (index: number, field: keyof Question, value: string | string[] | number) => {
     const newQuestions = [...questions];
     newQuestions[index] = { ...newQuestions[index], [field]: value };
     setQuestions(newQuestions);
@@ -117,7 +119,7 @@ const EditQuiz: React.FC = () => {
     const newQuestions = [...questions];
     const removedOption = newQuestions[questionIndex].options[optionIndex];
     newQuestions[questionIndex].options.splice(optionIndex, 1);
-    
+
     // Clear correct answer if it was the removed option
     if (newQuestions[questionIndex].correct_answer === removedOption) {
       newQuestions[questionIndex].correct_answer = '';
@@ -129,7 +131,7 @@ const EditQuiz: React.FC = () => {
     const newQuestions = [...questions];
     const oldValue = newQuestions[questionIndex].options[optionIndex];
     newQuestions[questionIndex].options[optionIndex] = value;
-    
+
     // Update correct answer if it was the old option value
     if (newQuestions[questionIndex].correct_answer === oldValue) {
       newQuestions[questionIndex].correct_answer = value;
@@ -138,25 +140,25 @@ const EditQuiz: React.FC = () => {
   };
 
   const validateForm = () => {
-    if (!title.trim()) {
+    if (!title?.trim()) {
       alert('Please enter a quiz title');
       return false;
     }
 
     for (let i = 0; i < questions.length; i++) {
       const question = questions[i];
-      
-      if (!question.question_text.trim()) {
+
+      if (!question.question_text?.trim()) {
         alert(`Please enter text for question ${i + 1}`);
         return false;
       }
 
-      if (question.options.some(option => !option.trim())) {
+      if (question.options.some(option => !option?.trim())) {
         alert(`Please fill in all options for question ${i + 1}`);
         return false;
       }
 
-      if (!question.correct_answer.trim()) {
+      if (!question.correct_answer?.trim()) {
         alert(`Please select a correct answer for question ${i + 1}`);
         return false;
       }
@@ -180,8 +182,8 @@ const EditQuiz: React.FC = () => {
       const { error: quizError } = await supabase
         .from('quizzes')
         .update({
-          title: title.trim(),
-          description: description.trim() || null
+          title: title?.trim() || '',
+          description: description?.trim() || null
         })
         .eq('id', id);
 
@@ -199,9 +201,9 @@ const EditQuiz: React.FC = () => {
       // Insert all questions (both new and existing)
       const questionsToInsert = questions.map((question, index) => ({
         quiz_id: id!,
-        question_text: question.question_text.trim(),
-        options: question.options.map(opt => opt.trim()),
-        correct_answer: question.correct_answer.trim(),
+        question_text: question.question_text?.trim() || '',
+        options: question.options.map(opt => opt?.trim() || ''),
+        correct_answer: question.correct_answer?.trim() || '',
         order_index: index
       }));
 
@@ -248,7 +250,7 @@ const EditQuiz: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
-      
+
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Edit Quiz</h1>
@@ -259,7 +261,7 @@ const EditQuiz: React.FC = () => {
           {/* Quiz Details */}
           <div className="bg-white rounded-lg shadow-md p-6">
             <h2 className="text-xl font-semibold text-gray-900 mb-6">Quiz Details</h2>
-            
+
             <div className="space-y-6">
               <div>
                 <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
