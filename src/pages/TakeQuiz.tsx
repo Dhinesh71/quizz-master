@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Quiz, Question } from '../types/database';
@@ -30,6 +30,9 @@ const TakeQuiz: React.FC = () => {
 
   // Quiz answers
   const [answers, setAnswers] = useState<string[]>([]);
+
+  // Prevent duplicate submissions
+  const submissionInProgress = useRef(false);
 
   useEffect(() => {
     if (id) {
@@ -79,16 +82,68 @@ const TakeQuiz: React.FC = () => {
     };
   }, [step, submitted, violationCount]);
 
+  const forceSubmit = async () => {
+    // Prevent duplicate submissions
+    if (submissionInProgress.current || submitted || submitting) {
+      return;
+    }
+
+    submissionInProgress.current = true;
+    setSubmitting(true);
+
+    try {
+      // Calculate score based on current answers
+      let correctAnswers = 0;
+      questions.forEach((question, index) => {
+        if (answers[index] === question.correct_answer) {
+          correctAnswers++;
+        }
+      });
+
+      // Submit response without validation
+      const { error } = await supabase
+        .from('responses')
+        .insert({
+          quiz_id: id!,
+          student_name: studentName.trim(),
+          student_email: studentEmail.trim(),
+          student_phone: studentPhone.trim(),
+          student_register_number: studentRegisterNumber.trim(),
+          answers,
+          score: correctAnswers,
+          total_questions: questions.length
+        } as any);
+
+      if (error) throw error;
+
+      setScore(correctAnswers);
+      setSubmitted(true);
+    } catch (error) {
+      console.error('Error submitting quiz:', error);
+      // Even if submission fails, mark as submitted to prevent further violations
+      setSubmitted(true);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleViolation = (message: string) => {
+    // Don't process violations if already submitted or submitting
+    if (submitted || submitting || submissionInProgress.current) {
+      return;
+    }
+
     const newCount = violationCount + 1;
     setViolationCount(newCount);
     setWarningMessage(message);
-    setShowWarning(true);
 
     if (newCount >= 3) {
-      // Auto-submit
+      // Auto-submit immediately without showing warning
       alert('Maximum violations reached. Your quiz is being submitted automatically.');
-      handleSubmit(new Event('submit') as any); // Trigger submission
+      forceSubmit();
+    } else {
+      // Show warning only if under 3 violations
+      setShowWarning(true);
     }
   };
 
@@ -231,14 +286,23 @@ const TakeQuiz: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Prevent duplicate submissions
+    if (submissionInProgress.current || submitted || submitting) {
+      return;
+    }
+
     if (!validateQuizForm()) return;
 
+    submissionInProgress.current = true;
     setSubmitting(true);
+
     try {
       // Double check before final submit
       const alreadySubmitted = await checkPreviousSubmission();
       if (alreadySubmitted) {
         alert('You have already submitted a response for this quiz.');
+        submissionInProgress.current = false;
         return;
       }
 
@@ -271,6 +335,7 @@ const TakeQuiz: React.FC = () => {
     } catch (error) {
       console.error('Error submitting quiz:', error);
       alert('Failed to submit quiz. Please try again.');
+      submissionInProgress.current = false;
     } finally {
       setSubmitting(false);
     }
